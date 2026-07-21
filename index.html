@@ -275,6 +275,13 @@
   .stat-card .stat-num{font-family:var(--display);font-size:22px;font-weight:600;}
   .stat-card .stat-lbl{font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-top:3px;}
 
+  .wd-row{display:flex;align-items:center;gap:10px;padding:7px 0;}
+  .wd-label{width:32px;flex-shrink:0;font-size:11.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.02em;}
+  .wd-bar-track{flex:1;height:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:99px;overflow:hidden;}
+  .wd-bar-fill{height:100%;border-radius:99px;}
+  .wd-time{width:70px;flex-shrink:0;text-align:right;font-family:var(--display);font-size:13px;font-weight:600;}
+  .wd-time .wd-empty{color:var(--ink-faint);font-weight:400;font-family:var(--body);font-size:11.5px;}
+
   .history-row{
     display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);
   }
@@ -344,6 +351,11 @@
     padding:14px;font-size:14.5px;font-weight:600;letter-spacing:.02em;
   }
   .btn-primary:active{transform:scale(.98);}
+  .btn-clear-day{
+    width:100%;background:none;border:none;padding:12px 0 2px;font-size:12.5px;
+    color:var(--red-deep);font-weight:600;text-align:center;
+  }
+  .btn-clear-day:active{opacity:.7;}
 
   .field-label{font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin:18px 0 8px;}
   .field-label:first-child{margin-top:0;}
@@ -559,6 +571,8 @@
       <div class="stat-card"><div class="stat-num" id="statCompleto">0</div><div class="stat-lbl">Completas</div></div>
       <div class="stat-card"><div class="stat-num" id="statAvg">0h</div><div class="stat-lbl">Promedio</div></div>
     </div>
+    <div class="section-eyebrow">Promedio por día de la semana</div>
+    <div id="weekdayAverages" style="margin-bottom:22px;"></div>
     <div class="section-eyebrow">Historial</div>
     <div id="historyList"></div>
   </section>
@@ -589,6 +603,7 @@
   <div class="sheet-body" id="sheetBody"></div>
   <div class="sheet-footer">
     <button class="btn-primary" id="sheetSave">Guardar cambios</button>
+    <button class="btn-clear-day" id="sheetClearDay" style="display:none;">Quitar registro de este día</button>
   </div>
 </div>
 
@@ -683,12 +698,12 @@ const SEED_ENTRIES = {
 // 👉 Reemplazá este objeto con la configuración de TU proyecto de Firebase.
 // La conseguís en: Firebase Console > Configuración del proyecto > Tus apps > SDK setup and configuration.
 const firebaseConfig = {
-  apiKey: "AIzaSyC09OZfK85ZzPwuKPMpFSq2jy7w1pTSDIQ",
-  authDomain: "rutina-proyect.firebaseapp.com",
-  projectId: "rutina-proyect",
-  storageBucket: "rutina-proyect.firebasestorage.app",
-  messagingSenderId: "70010074162",
-  appId: "1:70010074162:web:32d5af36f929e6ea65b82b"
+  apiKey: "TU_API_KEY",
+  authDomain: "TU_PROYECTO.firebaseapp.com",
+  projectId: "TU_PROYECTO",
+  storageBucket: "TU_PROYECTO.appspot.com",
+  messagingSenderId: "TU_SENDER_ID",
+  appId: "TU_APP_ID"
 };
 
 const FIREBASE_SDK_LOADED = (typeof firebase !== 'undefined');
@@ -973,6 +988,38 @@ function renderRutina(){
   al.href = ARM_MOBILITY_URL;
 }
 
+function computeWeekdayAverages(){
+  const orden = [1,2,3,4,5,6,0]; // lunes..domingo (según getDay())
+  const buckets = {0:[],1:[],2:[],3:[],4:[],5:[],6:[]};
+  Object.keys(entries).forEach(key=>{
+    const e = entries[key];
+    if (typeof e.minutes === 'number'){
+      buckets[parseKey(key).getDay()].push(e.minutes);
+    }
+  });
+  return orden.map(wd=>{
+    const arr = buckets[wd];
+    const avg = arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+    return { wd, label: DIAS_CORTOS3[wd], avg, count: arr.length };
+  });
+}
+
+function renderWeekdayAverages(){
+  const container = document.getElementById('weekdayAverages');
+  const data = computeWeekdayAverages();
+  const maxAvg = Math.max(1, ...data.map(d=> d.avg || 0));
+  container.innerHTML = data.map(d=>{
+    const pct = d.avg ? Math.max(6, Math.round((d.avg/maxAvg)*100)) : 0;
+    const barColor = (d.wd===1||d.wd===4) ? 'var(--blue)' : (d.wd===2||d.wd===5) ? 'var(--red)' : 'var(--rest)';
+    const timeHtml = d.avg ? formatMinutes(d.avg) : '<span class="wd-empty">—</span>';
+    return '<div class="wd-row">' +
+      '<div class="wd-label">'+d.label+'</div>' +
+      '<div class="wd-bar-track"><div class="wd-bar-fill" style="width:'+pct+'%;background:'+barColor+';"></div></div>' +
+      '<div class="wd-time">'+timeHtml+'</div>' +
+      '</div>';
+  }).join('');
+}
+
 /* ======================================================
    RENDER: PROGRESO
    ====================================================== */
@@ -981,6 +1028,8 @@ function renderProgreso(){
   document.getElementById('statStreak').textContent = computeStreak();
   document.getElementById('statCompleto').textContent = stats.completos;
   document.getElementById('statAvg').textContent = stats.avg ? formatMinutes(stats.avg) : '—';
+
+  renderWeekdayAverages();
 
   const list = document.getElementById('historyList');
   const keys = Object.keys(entries).sort().reverse();
@@ -1036,6 +1085,7 @@ function openSheet(dateKey){
   if (draft.minutes === null || draft.minutes === undefined) draft.minutes = 0;
 
   document.getElementById('sheetTitle').textContent = formatDateLong(dateKey);
+  document.getElementById('sheetClearDay').style.display = existing ? 'block' : 'none';
   renderSheetBody();
 
   document.getElementById('sheetOverlay').classList.add('open');
@@ -1107,6 +1157,17 @@ function pillBtn(state, label){
   return '<button type="button" class="pill-btn st-'+state+'" data-status="'+state+'" data-active="'+active+'">'+label+'</button>';
 }
 
+function renderCheckRow(key, name, detail, links){
+  const state = draft.checks[key] || 'pending';
+  const icon = state === 'hecho' ? '✓' : state === 'no_hecho' ? '✕' : '○';
+  return '<div class="check-row" data-key="'+key+'">' +
+    '<div class="cr-text"><div class="cr-name">'+name+'</div>' +
+    (detail ? '<div class="cr-detail">'+detail+'</div>' : '') +
+    (links ? '<div>'+links+'</div>' : '') + '</div>' +
+    '<button type="button" class="status-toggle" data-state="'+state+'" data-key="'+key+'">'+icon+'</button>' +
+    '</div>';
+}
+
 function renderExerciseZone(){
   const zone = document.getElementById('exerciseZone');
   if (draft.dayType === 'rest'){
@@ -1125,19 +1186,25 @@ function renderExerciseZone(){
     '</button>' +
     '<div class="exwrap-list" id="warmupList">' + WARMUP.core.map(x=>'• '+x).join('<br>') + '</div>';
 
+  html += '<div class="check-section"><div class="check-section-name">Movilidad</div>' +
+    renderCheckRow(
+      exerciseKey('Movilidad','Movilidad de piernas'), 'Movilidad de piernas', '',
+      '<a class="cr-link" href="'+WARMUP.mobility.url+'" target="_blank" rel="noopener">Ver ejercicio ↗</a>'
+    ) +
+    renderCheckRow(
+      exerciseKey('Movilidad','Movilidad de brazos'), 'Movilidad de brazos', '',
+      '<a class="cr-link" href="'+ARM_MOBILITY_URL+'" target="_blank" rel="noopener">Ver ejercicio ↗</a>'
+    ) +
+    '</div>';
+
   routine.sections.forEach(sec=>{
     html += '<div class="check-section"><div class="check-section-name">'+sec.name+'</div>';
     sec.exercises.forEach(ex=>{
       const key = exerciseKey(sec.name, ex.n);
-      const state = draft.checks[key] || 'pending';
-      const icon = state === 'hecho' ? '✓' : state === 'no_hecho' ? '✕' : '○';
       let links = '';
       if (ex.link) links += '<a class="cr-link" href="'+ex.link+'" target="_blank" rel="noopener">Ver ejercicio ↗</a> ';
       if (ex.video) links += '<a class="cr-link" href="'+ex.video+'" target="_blank" rel="noopener">Ver video ↗</a>';
-      html += '<div class="check-row" data-key="'+key+'">' +
-        '<div class="cr-text"><div class="cr-name">'+ex.n+'</div><div class="cr-detail">'+ex.d+'</div>' + (links?'<div>'+links+'</div>':'') + '</div>' +
-        '<button type="button" class="status-toggle" data-state="'+state+'" data-key="'+key+'">'+icon+'</button>' +
-        '</div>';
+      html += renderCheckRow(key, ex.n, ex.d, links);
     });
     html += '</div>';
   });
@@ -1396,6 +1463,17 @@ function init(){
   document.getElementById('sheetClose').addEventListener('click', closeSheet);
   document.getElementById('sheetOverlay').addEventListener('click', closeSheet);
   document.getElementById('sheetSave').addEventListener('click', saveDraft);
+  document.getElementById('sheetClearDay').addEventListener('click', async ()=>{
+    if (!openDateKey) return;
+    if (!confirm('¿Seguro que querés quitar el registro de este día? Va a quedar sin ningún estado, como si no hubieras cargado nada.')) return;
+    delete entries[openDateKey];
+    await saveEntries();
+    renderCalendar();
+    renderHeader();
+    if (currentView === 'progreso') renderProgreso();
+    showToast('Registro eliminado');
+    closeSheet();
+  });
 
   document.getElementById('settingsBtn').addEventListener('click', (e)=>{
     e.stopPropagation();
