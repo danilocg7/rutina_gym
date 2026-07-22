@@ -425,6 +425,20 @@
   }
   textarea::placeholder{color:var(--ink-faint);}
 
+  .form-input{
+    width:100%;background:var(--surface);border:1.5px solid var(--line-strong);border-radius:var(--r-m);
+    padding:11px 13px;font-size:13.5px;color:var(--ink);margin-bottom:12px;-webkit-appearance:none;appearance:none;
+  }
+  .form-input::placeholder{color:var(--ink-faint);}
+  select.form-input{
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235B5F66' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+    background-repeat:no-repeat;background-position:right 12px center;background-size:16px;padding-right:36px;
+  }
+  .ce-delete{
+    width:32px;height:32px;border-radius:50%;border:1.5px solid var(--line-strong);
+    background:var(--surface);color:var(--red-deep);font-size:14px;flex-shrink:0;
+  }
+
   .toast{
     position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));
     transform:translate(-50%,10px);background:var(--ink);color:var(--bg);
@@ -554,6 +568,7 @@
       <p id="warmupCoreNote"></p>
       <ul id="warmupCoreList" style="margin-bottom:8px;"></ul>
       <a class="mobility-btn" id="warmupMobilityLink" href="#" target="_blank" rel="noopener">Ver movilidad de piernas ↗</a>
+      <ul id="warmupCustomMobility" style="display:none;margin-top:10px;"></ul>
     </div>
     <p class="note-italic" id="defaultRepNote"></p>
     <div id="routineCards"></div>
@@ -571,10 +586,49 @@
       <div class="stat-card"><div class="stat-num" id="statCompleto">0</div><div class="stat-lbl">Completas</div></div>
       <div class="stat-card"><div class="stat-num" id="statAvg">0h</div><div class="stat-lbl">Promedio</div></div>
     </div>
+    <div class="stat-row" style="margin-top:-10px;">
+      <div class="stat-card"><div class="stat-num" id="statEntrenando">0</div><div class="stat-lbl">Entrenando</div></div>
+      <div class="stat-card"><div class="stat-num" id="statFallidos">0</div><div class="stat-lbl">Fallé</div></div>
+      <div class="stat-card"><div class="stat-num" id="statDescanso">0</div><div class="stat-lbl">Descanso</div></div>
+    </div>
     <div class="section-eyebrow">Promedio por día de la semana</div>
     <div id="weekdayAverages" style="margin-bottom:22px;"></div>
     <div class="section-eyebrow">Historial</div>
     <div id="historyList"></div>
+  </section>
+
+  <!-- ===== EDITAR (ejercicios fijos) ===== -->
+  <section class="view" id="view-editar">
+    <div class="section-eyebrow">Agregar ejercicio fijo</div>
+    <p class="note-italic" style="margin-bottom:14px;">Lo que agregues acá queda para siempre en la rutina de ese día — no es algo puntual de una fecha.</p>
+    <div class="info-card" style="border-style:solid;">
+      <div class="field-label" style="margin-top:0;">Día</div>
+      <select id="ceDayType" class="form-input">
+        <option value="A">Lunes y jueves — Piernas y pecho</option>
+        <option value="B">Martes y viernes — Piernas y espalda</option>
+        <option value="mobility">Movilidad (todos los días)</option>
+      </select>
+
+      <div id="ceSectionWrap">
+        <div class="field-label">Sección</div>
+        <select id="ceSection" class="form-input"></select>
+        <input type="text" id="ceNewSection" class="form-input" placeholder="Nombre de la nueva sección" style="display:none;margin-top:8px;">
+      </div>
+
+      <div class="field-label">Ejercicio</div>
+      <input type="text" id="ceName" class="form-input" placeholder="Nombre del ejercicio">
+
+      <div class="field-label">Descripción (peso, series, repeticiones)</div>
+      <input type="text" id="ceDetail" class="form-input" placeholder="Ej: 8 kg · 12 rep × 4 series">
+
+      <div class="field-label">Link a foto o video (opcional)</div>
+      <input type="url" id="ceLink" class="form-input" placeholder="https://...">
+
+      <button class="btn-primary" id="ceAddBtn" style="margin-top:16px;">Agregar ejercicio</button>
+    </div>
+
+    <div class="section-eyebrow" style="margin-top:22px;">Tus ejercicios agregados</div>
+    <div id="ceList"></div>
   </section>
 
   <nav class="tabbar">
@@ -589,6 +643,10 @@
     <button class="tab-btn" data-view="progreso">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="20" x2="5" y2="12"></line><line x1="12" y1="20" x2="12" y2="6"></line><line x1="19" y1="20" x2="19" y2="14"></line></svg>
       <span>Progreso</span>
+    </button>
+    <button class="tab-btn" data-view="editar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+      <span>Editar</span>
     </button>
   </nav>
 </div>
@@ -724,6 +782,7 @@ if (FIREBASE_CONFIGURED){
    ESTADO
    ====================================================== */
 let entries = {};
+let customExercises = [];
 let currentView = 'calendar';
 let calMonthDate = new Date();
 let draft = null;
@@ -770,8 +829,10 @@ function userDocRef(){
 async function loadEntries(){
   try{
     const snap = await userDocRef().get();
-    if (snap.exists && typeof snap.data().entriesJson === 'string'){
-      entries = JSON.parse(snap.data().entriesJson);
+    const data = snap.exists ? snap.data() : {};
+    customExercises = (typeof data.customExercisesJson === 'string') ? JSON.parse(data.customExercisesJson) : [];
+    if (typeof data.entriesJson === 'string'){
+      entries = JSON.parse(data.entriesJson);
     } else {
       // Cuenta nueva: sembramos los registros que ya tenías con fecha exacta.
       entries = JSON.parse(JSON.stringify(SEED_ENTRIES));
@@ -780,6 +841,7 @@ async function loadEntries(){
   }catch(e){
     console.error('No se pudieron cargar los datos', e);
     entries = {};
+    customExercises = [];
   }
 }
 
@@ -795,19 +857,37 @@ async function saveEntries(){
   }
 }
 
+async function saveCustomExercises(){
+  try{
+    await userDocRef().set({
+      customExercisesJson: JSON.stringify(customExercises),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge:true });
+  }catch(e){
+    console.error('No se pudo guardar', e);
+    showToast('No se pudo guardar — revisá tu conexión');
+  }
+}
+
 // Escucha cambios en tiempo real (por ejemplo, si cargás algo desde otro dispositivo).
 function startRealtimeSync(){
   if (unsubscribeEntries) unsubscribeEntries();
   unsubscribeEntries = userDocRef().onSnapshot(function(snap){
     if (!snap.exists) return;
     const data = snap.data();
-    if (typeof data.entriesJson !== 'string') return;
-    entries = JSON.parse(data.entriesJson);
+    let changedExercises = false;
+    if (typeof data.entriesJson === 'string') entries = JSON.parse(data.entriesJson);
+    if (typeof data.customExercisesJson === 'string'){
+      customExercises = JSON.parse(data.customExercisesJson);
+      changedExercises = true;
+    }
     // No pisamos la pantalla si hay una ficha de día abierta, para no perder lo que se está tipeando.
     if (!draft){
       renderCalendar();
       renderHeader();
       if (currentView === 'progreso') renderProgreso();
+      if (changedExercises && currentView === 'rutina') renderRutina();
+      if (changedExercises && currentView === 'editar') renderEditarList();
     }
   }, function(e){
     console.error('Error de sincronización', e);
@@ -846,14 +926,19 @@ function computeStreak(){
 
 function computeStats(){
   const keys = Object.keys(entries).sort();
-  let completos = 0, totalMin = 0, countMin = 0;
+  let completos = 0, parciales = 0, fallidos = 0, descansos = 0, totalMin = 0, countMin = 0;
   keys.forEach(k=>{
     const e = entries[k];
     if (e.status === 'completo') completos++;
+    else if (e.status === 'parcial') parciales++;
+    else if (e.status === 'no_realizado'){
+      if (e.dayType === 'rest') descansos++;
+      else fallidos++;
+    }
     if (typeof e.minutes === 'number'){ totalMin += e.minutes; countMin++; }
   });
   const avg = countMin ? Math.round(totalMin/countMin) : 0;
-  return { completos, avg };
+  return { completos, parciales, entrenando: completos+parciales, fallidos, descansos, avg };
 }
 
 /* ======================================================
@@ -963,6 +1048,20 @@ function renderRutina(){
   wl.href = WARMUP.mobility.url;
   wl.textContent = 'Ver ' + WARMUP.mobility.label.toLowerCase() + ' ↗';
 
+  const customMobility = customExercises.filter(ce=> ce.dayType === 'mobility');
+  const cmEl = document.getElementById('warmupCustomMobility');
+  if (customMobility.length){
+    cmEl.style.display = 'block';
+    cmEl.innerHTML = customMobility.map(ce=>{
+      const link = ce.link ? ' ' + refLink(ce.link, 'Ver') : '';
+      const detail = ce.detail ? ' — '+ce.detail : '';
+      return '<li style="font-size:13px;color:var(--ink-soft);padding:2px 0;">• '+escapeHtml(ce.name)+detail+link+'</li>';
+    }).join('');
+  } else {
+    cmEl.style.display = 'none';
+    cmEl.innerHTML = '';
+  }
+
   document.getElementById('defaultRepNote').textContent = 'Salvo que se indique lo contrario, todos los ejercicios son 12 repeticiones por 4 series.';
 
   const container = document.getElementById('routineCards');
@@ -972,7 +1071,7 @@ function renderRutina(){
     const card = document.createElement('div');
     card.className = 'routine-card ' + r.color;
     let sectionsHtml = '';
-    r.sections.forEach(sec=>{
+    getSectionsForDay(id).forEach(sec=>{
       sectionsHtml += '<div class="ex-section"><div class="ex-section-name">'+sec.name+'</div><ul>' +
         sec.exercises.map(renderExerciseRow).join('') + '</ul></div>';
     });
@@ -1028,6 +1127,9 @@ function renderProgreso(){
   document.getElementById('statStreak').textContent = computeStreak();
   document.getElementById('statCompleto').textContent = stats.completos;
   document.getElementById('statAvg').textContent = stats.avg ? formatMinutes(stats.avg) : '—';
+  document.getElementById('statEntrenando').textContent = stats.entrenando;
+  document.getElementById('statFallidos').textContent = stats.fallidos;
+  document.getElementById('statDescanso').textContent = stats.descansos;
 
   renderWeekdayAverages();
 
@@ -1055,6 +1157,109 @@ function renderProgreso(){
   }).join('');
 }
 
+/* ======================================================
+   EDITAR — ejercicios fijos personalizados
+   ====================================================== */
+function updateSectionOptions(){
+  const dayType = document.getElementById('ceDayType').value;
+  const wrap = document.getElementById('ceSectionWrap');
+  const sel = document.getElementById('ceSection');
+  const newInput = document.getElementById('ceNewSection');
+
+  if (dayType === 'mobility'){
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'block';
+  const baseSections = ROUTINES[dayType].sections.map(s=>s.name);
+  const customSections = customExercises.filter(ce=> ce.dayType === dayType).map(ce=> ce.section);
+  const allSections = Array.from(new Set(baseSections.concat(customSections)));
+  sel.innerHTML = allSections.map(s=>'<option value="'+escapeHtml(s)+'">'+escapeHtml(s)+'</option>').join('') +
+    '<option value="__new__">+ Nueva sección…</option>';
+  newInput.style.display = 'none';
+  newInput.value = '';
+}
+
+function renderEditarList(){
+  const el = document.getElementById('ceList');
+  if (!customExercises.length){
+    el.innerHTML = '<div class="empty-state">Todavía no agregaste ejercicios fijos.<br>Los que agregues acá van a aparecer siempre en el día correspondiente.</div>';
+    return;
+  }
+  el.innerHTML = customExercises.map(ce=>{
+    const dayLabel = ce.dayType === 'A' ? 'Lunes y jueves' : ce.dayType === 'B' ? 'Martes y viernes' : 'Movilidad';
+    const sectionLabel = ce.dayType === 'mobility' ? '' : ' · '+escapeHtml(ce.section);
+    const detailLabel = ce.detail ? ' · '+escapeHtml(ce.detail) : '';
+    const linkHtml = ce.link ? '<div style="margin-top:3px;"><a class="cr-link" href="'+ce.link+'" target="_blank" rel="noopener">Ver referencia ↗</a></div>' : '';
+    return '<div class="history-row">' +
+      '<div class="hist-body" style="flex:1;">' +
+        '<div class="h-title">'+escapeHtml(ce.name)+'</div>' +
+        '<div class="h-sub">'+dayLabel+sectionLabel+detailLabel+'</div>' +
+        linkHtml +
+      '</div>' +
+      '<button type="button" class="ce-delete" data-id="'+ce.id+'" aria-label="Eliminar">🗑</button>' +
+      '</div>';
+  }).join('');
+
+  el.querySelectorAll('.ce-delete').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if (!confirm('¿Eliminar este ejercicio de tu rutina fija? Esto no borra los registros de días pasados.')) return;
+      const id = btn.getAttribute('data-id');
+      customExercises = customExercises.filter(ce=> ce.id !== id);
+      await saveCustomExercises();
+      updateSectionOptions();
+      renderEditarList();
+      renderRutina();
+      showToast('Ejercicio eliminado');
+    });
+  });
+}
+
+function bindEditarForm(){
+  document.getElementById('ceDayType').addEventListener('change', updateSectionOptions);
+  document.getElementById('ceSection').addEventListener('change', ()=>{
+    const isNew = document.getElementById('ceSection').value === '__new__';
+    document.getElementById('ceNewSection').style.display = isNew ? 'block' : 'none';
+  });
+
+  document.getElementById('ceAddBtn').addEventListener('click', async ()=>{
+    const dayType = document.getElementById('ceDayType').value;
+    const name = document.getElementById('ceName').value.trim();
+    const detail = document.getElementById('ceDetail').value.trim();
+    let link = document.getElementById('ceLink').value.trim();
+    if (link && !/^https?:\/\//i.test(link)) link = 'https://' + link;
+
+    if (!name){ showToast('Escribí el nombre del ejercicio'); return; }
+
+    let section = '';
+    if (dayType !== 'mobility'){
+      const selVal = document.getElementById('ceSection').value;
+      if (selVal === '__new__'){
+        section = document.getElementById('ceNewSection').value.trim();
+        if (!section){ showToast('Escribí el nombre de la nueva sección'); return; }
+      } else {
+        section = selVal;
+      }
+    }
+
+    customExercises.push({
+      id: 'ce_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      dayType, section, name, detail, link
+    });
+    await saveCustomExercises();
+
+    document.getElementById('ceName').value = '';
+    document.getElementById('ceDetail').value = '';
+    document.getElementById('ceLink').value = '';
+    updateSectionOptions();
+    renderEditarList();
+    renderRutina();
+    showToast('Ejercicio agregado ✓');
+  });
+
+  updateSectionOptions();
+}
+
 function escapeHtml(s){
   const d = document.createElement('div');
   d.textContent = s;
@@ -1077,6 +1282,30 @@ function blankEntry(dateKey){
 }
 
 function exerciseKey(section, name){ return section + '|' + name; }
+
+function getSectionsForDay(dayType){
+  const sections = ROUTINES[dayType].sections.map(sec=>({
+    name: sec.name,
+    exercises: sec.exercises.map(ex=>({ n:ex.n, d:ex.d, link:ex.link, video:ex.video, key: exerciseKey(sec.name, ex.n) }))
+  }));
+  customExercises.filter(ce=> ce.dayType === dayType).forEach(ce=>{
+    let sec = sections.find(s=> s.name === ce.section);
+    if (!sec){ sec = { name: ce.section, exercises:[] }; sections.push(sec); }
+    sec.exercises.push({ n: ce.name, d: ce.detail||'', link: ce.link||'', video:'', key: exerciseKey(sec.name, 'custom:'+ce.id) });
+  });
+  return sections;
+}
+
+function getMobilityItems(){
+  const items = [
+    { n:'Movilidad de piernas', d:'', link: WARMUP.mobility.url, key: exerciseKey('Movilidad','Movilidad de piernas') },
+    { n:'Movilidad de brazos', d:'', link: ARM_MOBILITY_URL, key: exerciseKey('Movilidad','Movilidad de brazos') },
+  ];
+  customExercises.filter(ce=> ce.dayType === 'mobility').forEach(ce=>{
+    items.push({ n: ce.name, d: ce.detail||'', link: ce.link||'', key: exerciseKey('Movilidad','custom:'+ce.id) });
+  });
+  return items;
+}
 
 function openSheet(dateKey){
   openDateKey = dateKey;
@@ -1178,7 +1407,7 @@ function renderExerciseZone(){
       '</div>';
     return;
   }
-  const routine = ROUTINES[draft.dayType];
+  const sections = getSectionsForDay(draft.dayType);
   let html = '<div class="field-label">Calentamiento</div>' +
     '<button type="button" class="exwrap-toggle" id="warmupToggle">' +
       '<span>Cinta 8\' + zona media (5 ejercicios)</span>' +
@@ -1187,24 +1416,19 @@ function renderExerciseZone(){
     '<div class="exwrap-list" id="warmupList">' + WARMUP.core.map(x=>'• '+x).join('<br>') + '</div>';
 
   html += '<div class="check-section"><div class="check-section-name">Movilidad</div>' +
-    renderCheckRow(
-      exerciseKey('Movilidad','Movilidad de piernas'), 'Movilidad de piernas', '',
-      '<a class="cr-link" href="'+WARMUP.mobility.url+'" target="_blank" rel="noopener">Ver ejercicio ↗</a>'
-    ) +
-    renderCheckRow(
-      exerciseKey('Movilidad','Movilidad de brazos'), 'Movilidad de brazos', '',
-      '<a class="cr-link" href="'+ARM_MOBILITY_URL+'" target="_blank" rel="noopener">Ver ejercicio ↗</a>'
-    ) +
+    getMobilityItems().map(it=>{
+      const links = it.link ? '<a class="cr-link" href="'+it.link+'" target="_blank" rel="noopener">Ver ejercicio ↗</a>' : '';
+      return renderCheckRow(it.key, it.n, it.d, links);
+    }).join('') +
     '</div>';
 
-  routine.sections.forEach(sec=>{
+  sections.forEach(sec=>{
     html += '<div class="check-section"><div class="check-section-name">'+sec.name+'</div>';
     sec.exercises.forEach(ex=>{
-      const key = exerciseKey(sec.name, ex.n);
       let links = '';
       if (ex.link) links += '<a class="cr-link" href="'+ex.link+'" target="_blank" rel="noopener">Ver ejercicio ↗</a> ';
       if (ex.video) links += '<a class="cr-link" href="'+ex.video+'" target="_blank" rel="noopener">Ver video ↗</a>';
-      html += renderCheckRow(key, ex.n, ex.d, links);
+      html += renderCheckRow(ex.key, ex.n, ex.d, links);
     });
     html += '</div>';
   });
@@ -1309,6 +1533,7 @@ function setView(view){
     b.classList.toggle('active', b.getAttribute('data-view') === view);
   });
   if (view === 'progreso') renderProgreso();
+  if (view === 'editar') renderEditarList();
 }
 
 /* ======================================================
@@ -1412,11 +1637,13 @@ async function handleAuthChange(user){
     renderHeader();
     renderCalendar();
     renderRutina();
+    updateSectionOptions();
     setView('calendar');
   } else {
     stopRealtimeSync();
     currentUser = null;
     entries = {};
+    customExercises = [];
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = 'none';
     document.getElementById('authScreen').style.display = 'flex';
@@ -1446,6 +1673,7 @@ function init(){
   if (!FIREBASE_CONFIGURED){ showFatalError('config'); return; }
 
   bindAuthForm();
+  bindEditarForm();
 
   document.querySelectorAll('.tab-btn').forEach(btn=>{
     btn.addEventListener('click', ()=> setView(btn.getAttribute('data-view')));
