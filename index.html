@@ -926,18 +926,31 @@ function computeStreak(){
 
 function computeStats(){
   const keys = Object.keys(entries).sort();
-  let completos = 0, parciales = 0, fallidos = 0, descansos = 0, totalMin = 0, countMin = 0;
+  let completos = 0, parciales = 0, fallidos = 0, totalMin = 0, countMin = 0;
   keys.forEach(k=>{
     const e = entries[k];
     if (e.status === 'completo') completos++;
     else if (e.status === 'parcial') parciales++;
-    else if (e.status === 'no_realizado'){
-      if (e.dayType === 'rest') descansos++;
-      else fallidos++;
-    }
+    else if (e.status === 'no_realizado' && e.dayType !== 'rest') fallidos++;
     if (typeof e.minutes === 'number'){ totalMin += e.minutes; countMin++; }
   });
   const avg = countMin ? Math.round(totalMin/countMin) : 0;
+
+  // Días de descanso: recorremos todo el calendario desde el inicio hasta hoy.
+  // Un día cuenta como descanso si, por defecto o por lo que cargaste, es de tipo
+  // "rest" y no marcaste que hiciste algo (completo/parcial) — sin necesitar que
+  // hayas abierto y guardado ese día a propósito.
+  let descansos = 0;
+  let d = parseKey(START_DATE);
+  const end = parseKey(todayKey());
+  while (d <= end){
+    const key = toKey(d);
+    const e = entries[key];
+    const type = e ? e.dayType : dayTypeForDate(key);
+    if (type === 'rest' && (!e || e.status === 'no_realizado')) descansos++;
+    d.setDate(d.getDate()+1);
+  }
+
   return { completos, parciales, entrenando: completos+parciales, fallidos, descansos, avg };
 }
 
