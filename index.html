@@ -439,6 +439,29 @@
     background:var(--surface);color:var(--red-deep);font-size:14px;flex-shrink:0;
   }
 
+  .food-row{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);
+    padding:14px 16px;margin-bottom:10px;
+  }
+  .food-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
+  .food-name{font-size:15px;font-weight:600;}
+  .food-kcal{font-family:var(--display);font-size:16px;font-weight:600;color:var(--ink);white-space:nowrap;}
+  .food-kcal span{font-size:10px;font-weight:500;color:var(--ink-faint);text-transform:uppercase;margin-left:2px;}
+  .food-portion{font-size:11.5px;color:var(--ink-faint);margin-top:1px;}
+  .food-macros{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+  .macro-chip{font-size:11px;font-weight:600;padding:4px 9px;border-radius:999px;white-space:nowrap;}
+  .macro-chip.macro-p{background:var(--blue-soft);color:var(--blue-deep);}
+  .macro-chip.macro-c{background:var(--gold-soft);color:var(--gold-deep);}
+  .macro-chip.macro-g{background:var(--red-soft);color:var(--red-deep);}
+  .macro-chip.macro-fiber{background:var(--green-soft);color:var(--green);}
+  .food-desc{font-size:12.5px;color:var(--ink-soft);margin-top:9px;line-height:1.5;}
+
+  .nutrient-card{margin-bottom:12px;}
+  .nutrient-row{padding:9px 0;border-top:1px solid var(--line);}
+  .nutrient-card .nutrient-row:first-of-type{border-top:none;padding-top:0;}
+  .nutrient-name{font-size:13.5px;font-weight:600;}
+  .nutrient-detail{font-size:12px;color:var(--ink-soft);margin-top:2px;line-height:1.55;}
+
   .toast{
     position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));
     transform:translate(-50%,10px);background:var(--ink);color:var(--bg);
@@ -631,6 +654,25 @@
     <div id="ceList"></div>
   </section>
 
+  <!-- ===== INFO (alimentación) ===== -->
+  <section class="view" id="view-info">
+    <div class="section-eyebrow">Alimentos</div>
+    <input type="text" id="foodSearch" class="form-input" placeholder="Buscar un alimento…">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+      <label style="font-size:11.5px;color:var(--ink-soft);font-weight:600;white-space:nowrap;">Ordenar por</label>
+      <select id="foodSort" class="form-input" style="margin-bottom:12px;flex:1;">
+        <option value="default">Recomendado</option>
+        <option value="calorias">Más calorías</option>
+        <option value="proteinas">Más proteínas</option>
+        <option value="nombre">Nombre (A-Z)</option>
+      </select>
+    </div>
+    <div id="foodList"></div>
+
+    <div class="section-eyebrow" style="margin-top:24px;">Nutrientes y conceptos</div>
+    <div id="nutrientCards"></div>
+  </section>
+
   <nav class="tabbar">
     <button class="tab-btn active" data-view="calendar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"></rect><line x1="3" y1="9.5" x2="21" y2="9.5"></line><line x1="8" y1="2.5" x2="8" y2="6.5"></line><line x1="16" y1="2.5" x2="16" y2="6.5"></line></svg>
@@ -647,6 +689,10 @@
     <button class="tab-btn" data-view="editar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
       <span>Editar</span>
+    </button>
+    <button class="tab-btn" data-view="info">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="11" x2="12" y2="16"></line><circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none"></circle></svg>
+      <span>Info</span>
     </button>
   </nav>
 </div>
@@ -689,6 +735,49 @@ const WARMUP = {
 
 const ARM_MOBILITY_TEXT = 'Con un palo: lo agarro cerca y lo llevo desde adelante hacia atrás (lo más lejos posible hacia la espalda), con los brazos rectos todo el tiempo. Después lo agarro de los extremos y repito el mismo movimiento, llevándolo lo más cerca posible de la cola.\n\nPegado a la pared: estiro los brazos y los junto por detrás.';
 const ARM_MOBILITY_URL = 'https://shorturl.at/du78U';
+
+// Datos nutricionales (pestaña "Info")
+const FOODS = [
+  { n:'Avena', portion:'100 g', kcal:390, p:17, c:66, g:7, fiber:10, desc:'Rica en carbohidratos complejos, fibra y algo de proteína.' },
+  { n:'Frutos secos', portion:'100 g', kcal:600, p:20, c:15, g:50, fiber:8, desc:'Muy calóricos y nutritivos.' },
+  { n:'Carne vacuna', portion:'100 g', kcal:250, p:26, c:0, g:17, fiber:0, desc:'Rica en proteínas, hierro y vitamina B12.' },
+  { n:'Pasta', portion:'100 g cocidos', kcal:150, p:5, c:30, g:1, fiber:2, desc:'Fuente de carbohidratos.' },
+  { n:'Pollo (pechuga cocida)', portion:'100 g', kcal:165, p:31, c:0, g:4, fiber:0, desc:'Excelente fuente de proteína magra.' },
+  { n:'Arroz', portion:'100 g cocidos', kcal:130, p:3, c:28, g:0, fiber:0, desc:'Fuente de carbohidratos.' },
+  { n:'Atún', portion:'100 g', kcal:130, p:29, c:0, g:1, fiber:0, desc:'Muy rico en proteínas y bajo en grasa.' },
+  { n:'Lentejas (cocidas)', portion:'100 g', kcal:116, p:9, c:20, g:0.4, fiber:8, desc:'Buena fuente de proteína vegetal, carbohidratos y fibra.' },
+  { n:'Banana', portion:'1 unidad', kcal:105, p:1, c:27, g:0, fiber:3, desc:'Fuente de energía y potasio.' },
+  { n:'Palta', portion:'100 g', kcal:160, p:2, c:9, g:15, fiber:7, desc:'Rica en grasas saludables y fibra.' },
+  { n:'Leche', portion:'250 ml', kcal:130, p:8, c:12, g:6, fiber:0, desc:'Proteínas, calcio y energía.' },
+  { n:'Yogur griego', portion:'100 g', kcal:100, p:10, c:4, g:5, fiber:0, desc:'Alto contenido de proteína y calcio.' },
+  { n:'Pan', portion:'1 rebanada', kcal:80, p:3, c:14, g:1, fiber:1, desc:'Fuente de carbohidratos.' },
+  { n:'Miel', portion:'1 cucharada', kcal:60, p:0, c:17, g:0, fiber:0, desc:'Energía rápida.' },
+  { n:'Mantequilla de maní', portion:'1 cucharada', kcal:95, p:4, c:3, g:8, fiber:1, desc:'Rica en grasas saludables y calorías.' },
+  { n:'Queso', portion:'1 feta', kcal:90, p:6, c:1, g:7, fiber:0, desc:'Proteínas, grasas y calcio.' },
+  { n:'Mandarina', portion:'1 unidad mediana', kcal:45, p:1, c:12, g:0, fiber:2, desc:'Fruta rica en vitamina C y carbohidratos.' },
+  { n:'Huevo', portion:'1 unidad', kcal:75, p:6, c:0.5, g:5, fiber:0, desc:'Proteína de alta calidad.' },
+  { n:'Jamón', portion:'1 feta', kcal:35, p:4, c:1, g:1, fiber:0, desc:'Fuente de proteína.' },
+  { n:'Café', portion:'1 taza', kcal:2, p:0, c:0, g:0, fiber:0, desc:'Contiene cafeína.' },
+];
+
+const NUTRIENT_GROUPS = [
+  { title:'Macronutrientes', rows:[
+    { name:'Carbohidratos', detail:'Principal fuente de energía rápida para el cuerpo.' },
+    { name:'Grasas', detail:'Reserva de energía a largo plazo y funciones hormonales.' },
+    { name:'Proteínas', detail:'Construcción y reparación de tejidos (músculos, piel, órganos, etc.).' },
+  ]},
+  { title:'Calorías', rows:[
+    { name:'¿Qué son?', detail:'La unidad de energía. Indican cuánta energía te aporta un alimento.' },
+  ]},
+  { title:'Micronutrientes', rows:[
+    { name:'Vitaminas', detail:'Nutrientes necesarios en pequeñas cantidades. Ejemplos: vitamina A, C, D, E, K, B12, etc.' },
+    { name:'Minerales', detail:'Elementos necesarios para el funcionamiento del cuerpo. Ejemplos: calcio, hierro, magnesio, zinc, potasio, etc.' },
+  ]},
+  { title:'Otros componentes importantes', rows:[
+    { name:'Fibra', detail:'Un tipo especial de carbohidrato. Ayuda a la digestión y a la salud intestinal.' },
+    { name:'Agua', detail:'Componente esencial. Transporte de nutrientes, regulación de temperatura, etc.' },
+  ]},
+];
 
 const ROUTINES = {
   A: {
@@ -1098,6 +1187,61 @@ function renderRutina(){
   document.getElementById('armMobilityText').textContent = ARM_MOBILITY_TEXT;
   const al = document.getElementById('armMobilityLink');
   al.href = ARM_MOBILITY_URL;
+}
+
+/* ======================================================
+   RENDER: INFO (alimentación)
+   ====================================================== */
+function renderFoodList(){
+  const searchVal = (document.getElementById('foodSearch').value || '').trim().toLowerCase();
+  const sortVal = document.getElementById('foodSort').value;
+  let list = FOODS.filter(f=> f.n.toLowerCase().includes(searchVal));
+
+  if (sortVal === 'calorias') list = list.slice().sort((a,b)=> b.kcal - a.kcal);
+  else if (sortVal === 'proteinas') list = list.slice().sort((a,b)=> b.p - a.p);
+  else if (sortVal === 'nombre') list = list.slice().sort((a,b)=> a.n.localeCompare(b.n, 'es'));
+  // 'default' -> mantiene el orden original del archivo cargado
+
+  const el = document.getElementById('foodList');
+  if (!list.length){
+    el.innerHTML = '<div class="empty-state">No encontramos ningún alimento con ese nombre.</div>';
+    return;
+  }
+  el.innerHTML = list.map(f=>{
+    const fiberChip = f.fiber ? '<span class="macro-chip macro-fiber">Fibra '+f.fiber+' g</span>' : '';
+    return '<div class="food-row">' +
+      '<div class="food-head">' +
+        '<div class="food-name">'+escapeHtml(f.n)+'</div>' +
+        '<div class="food-kcal">'+f.kcal+'<span>kcal</span></div>' +
+      '</div>' +
+      '<div class="food-portion">'+escapeHtml(f.portion)+'</div>' +
+      '<div class="food-macros">' +
+        '<span class="macro-chip macro-p">P '+f.p+' g</span>' +
+        '<span class="macro-chip macro-c">C '+f.c+' g</span>' +
+        '<span class="macro-chip macro-g">G '+f.g+' g</span>' +
+        fiberChip +
+      '</div>' +
+      (f.desc ? '<div class="food-desc">'+escapeHtml(f.desc)+'</div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+function renderNutrientCards(){
+  const el = document.getElementById('nutrientCards');
+  el.innerHTML = NUTRIENT_GROUPS.map(group=>{
+    const rows = group.rows.map(r=>
+      '<div class="nutrient-row"><div class="nutrient-name">'+escapeHtml(r.name)+'</div>' +
+      '<div class="nutrient-detail">'+escapeHtml(r.detail)+'</div></div>'
+    ).join('');
+    return '<div class="info-card nutrient-card"><h4>'+escapeHtml(group.title)+'</h4>'+rows+'</div>';
+  }).join('');
+}
+
+function bindInfoView(){
+  document.getElementById('foodSearch').addEventListener('input', renderFoodList);
+  document.getElementById('foodSort').addEventListener('change', renderFoodList);
+  renderFoodList();
+  renderNutrientCards();
 }
 
 function computeWeekdayAverages(){
@@ -1687,6 +1831,7 @@ function init(){
 
   bindAuthForm();
   bindEditarForm();
+  bindInfoView();
 
   document.querySelectorAll('.tab-btn').forEach(btn=>{
     btn.addEventListener('click', ()=> setView(btn.getAttribute('data-view')));
