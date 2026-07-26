@@ -509,6 +509,15 @@
     color:var(--ink-faint);text-align:center;text-decoration:underline;
   }
   .auth-loading{display:flex;align-items:center;gap:8px;justify-content:center;padding:10px 0 0;font-size:12.5px;color:var(--ink-soft);}
+
+  .onboard-option{
+    display:block;width:100%;text-align:left;background:var(--surface);
+    border:1.5px solid var(--line-strong);border-radius:var(--r-m);
+    padding:16px;margin-bottom:12px;
+  }
+  .onboard-option:active{transform:scale(.98);}
+  .onboard-option-title{font-family:var(--display);font-size:16px;font-weight:600;margin-bottom:6px;}
+  .onboard-option-sub{font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
 </style>
 </head>
 <body>
@@ -537,6 +546,22 @@
   <div class="auth-card">
     <div class="brand-title" id="fatalErrorTitle">Falta un paso</div>
     <p class="auth-sub" id="fatalErrorText" style="white-space:pre-line;"></p>
+  </div>
+</div>
+
+<div id="onboardingScreen" class="full-overlay" style="display:none;">
+  <div class="auth-card" style="max-width:400px;">
+    <div class="brand-title">¡Bienvenido!</div>
+    <p class="auth-sub">¿Cómo querés empezar tu rutina?</p>
+    <button type="button" class="onboard-option" id="onboardUseBase">
+      <div class="onboard-option-title">Usar la rutina ya creada</div>
+      <div class="onboard-option-sub">Empezás con la rutina completa (piernas, pecho, espalda, bíceps, tríceps) ya cargada, y la podés modificar cuando quieras.</div>
+    </button>
+    <button type="button" class="onboard-option" id="onboardBlank">
+      <div class="onboard-option-title">Crear mi propia rutina</div>
+      <div class="onboard-option-sub">Empezás en blanco y agregás tus propios ejercicios para cada día desde la pestaña Editar.</div>
+    </button>
+    <div class="auth-loading" id="onboardLoading" style="display:none;"><div class="spinner" style="width:16px;height:16px;"></div><span>Preparando tu cuenta…</span></div>
   </div>
 </div>
 
@@ -622,13 +647,22 @@
 
   <!-- ===== EDITAR (ejercicios fijos) ===== -->
   <section class="view" id="view-editar">
-    <div class="section-eyebrow">Agregar ejercicio fijo</div>
+    <div class="section-eyebrow">Nombres de tu rutina</div>
+    <div class="info-card" style="border-style:solid;">
+      <div class="field-label" style="margin-top:0;">Nombre del día A (lunes y jueves)</div>
+      <input type="text" id="labelA" class="form-input" placeholder="Ej: Piernas y pecho + Bíceps">
+      <div class="field-label">Nombre del día B (martes y viernes)</div>
+      <input type="text" id="labelB" class="form-input" placeholder="Ej: Piernas y espalda + Tríceps">
+      <button class="btn-primary" id="saveLabelsBtn" style="margin-top:4px;">Guardar nombres</button>
+    </div>
+
+    <div class="section-eyebrow" style="margin-top:22px;">Agregar ejercicio fijo</div>
     <p class="note-italic" style="margin-bottom:14px;">Lo que agregues acá queda para siempre en la rutina de ese día — no es algo puntual de una fecha.</p>
     <div class="info-card" style="border-style:solid;">
       <div class="field-label" style="margin-top:0;">Día</div>
       <select id="ceDayType" class="form-input">
-        <option value="A">Lunes y jueves — Piernas y pecho</option>
-        <option value="B">Martes y viernes — Piernas y espalda</option>
+        <option value="A"></option>
+        <option value="B"></option>
         <option value="mobility">Movilidad (todos los días)</option>
       </select>
 
@@ -823,22 +857,6 @@ const ROUTINES = {
   }
 };
 
-// Entradas ya registradas a mano en el documento original (solo las que tenían fecha exacta)
-const SEED_ENTRIES = {
-  '2026-07-06': { dayType:'A', status:'completo', minutes:90,
-    comment:'Volví a hacer la rutina completa: incluí la parte de piernas que la semana anterior no había hecho.', extra:'', checks:{} },
-  '2026-07-07': { dayType:'B', status:'parcial', minutes:71,
-    comment:'No hice piernas.', extra:'Caminadora corriendo a 9 km/h. Abdominales en máquina 4×13.', checks:{} },
-  '2026-07-09': { dayType:'A', status:'parcial', minutes:71,
-    comment:'No hice piernas (o muy poco peso).', extra:'Hombros en máquina 4×13.', checks:{} },
-  '2026-07-10': { dayType:'B', status:'no_realizado', minutes:null,
-    comment:'No fui porque estaba de festejo.', extra:'', checks:{} },
-  '2026-07-14': { dayType:'B', status:'completo', minutes:92,
-    comment:'Volví a hacer la rutina completa, incluyendo piernas.', extra:'Abdominales en máquina 4×12.', checks:{} },
-  '2026-07-15': { dayType:'rest', status:'completo', minutes:80,
-    comment:'Sesión más liviana: zona media y movilidad de brazos.', extra:'', checks:{} },
-};
-
 /* ======================================================
    FIREBASE — CONFIGURACIÓN
    ====================================================== */
@@ -872,6 +890,8 @@ if (FIREBASE_CONFIGURED){
    ====================================================== */
 let entries = {};
 let customExercises = [];
+let routineLabels = {}; // { A:{label}, B:{label} } — nombres personalizados de cada día
+let useBaseRoutine = true; // false = el usuario eligió empezar su rutina de cero
 let currentView = 'calendar';
 let calMonthDate = new Date();
 let draft = null;
@@ -915,22 +935,30 @@ function userDocRef(){
   return db.collection('users').doc(currentUser.uid);
 }
 
-async function loadEntries(){
+async function loadUserData(){
   try{
     const snap = await userDocRef().get();
-    const data = snap.exists ? snap.data() : {};
-    customExercises = (typeof data.customExercisesJson === 'string') ? JSON.parse(data.customExercisesJson) : [];
-    if (typeof data.entriesJson === 'string'){
-      entries = JSON.parse(data.entriesJson);
-    } else {
-      // Cuenta nueva: sembramos los registros que ya tenías con fecha exacta.
-      entries = JSON.parse(JSON.stringify(SEED_ENTRIES));
-      await saveEntries();
+    if (!snap.exists || typeof snap.data().entriesJson !== 'string'){
+      // Cuenta nueva: no copiamos entradas de nadie más — arranca en blanco.
+      entries = {};
+      customExercises = [];
+      routineLabels = {};
+      useBaseRoutine = true;
+      return { isNew: true };
     }
+    const data = snap.data();
+    entries = JSON.parse(data.entriesJson);
+    customExercises = (typeof data.customExercisesJson === 'string') ? JSON.parse(data.customExercisesJson) : [];
+    routineLabels = (typeof data.routineLabelsJson === 'string') ? JSON.parse(data.routineLabelsJson) : {};
+    useBaseRoutine = (typeof data.useBaseRoutine === 'boolean') ? data.useBaseRoutine : true;
+    return { isNew: false };
   }catch(e){
     console.error('No se pudieron cargar los datos', e);
     entries = {};
     customExercises = [];
+    routineLabels = {};
+    useBaseRoutine = true;
+    return { isNew: false };
   }
 }
 
@@ -958,6 +986,35 @@ async function saveCustomExercises(){
   }
 }
 
+async function saveRoutineMeta(){
+  try{
+    await userDocRef().set({
+      routineLabelsJson: JSON.stringify(routineLabels),
+      useBaseRoutine: useBaseRoutine,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge:true });
+  }catch(e){
+    console.error('No se pudo guardar', e);
+    showToast('No se pudo guardar — revisá tu conexión');
+  }
+}
+
+// Guarda de una sola vez la elección inicial (onboarding) de un usuario nuevo.
+async function saveOnboardingChoice(){
+  try{
+    await userDocRef().set({
+      entriesJson: JSON.stringify(entries),
+      customExercisesJson: JSON.stringify(customExercises),
+      routineLabelsJson: JSON.stringify(routineLabels),
+      useBaseRoutine: useBaseRoutine,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge:true });
+  }catch(e){
+    console.error('No se pudo guardar', e);
+    showToast('No se pudo guardar — revisá tu conexión');
+  }
+}
+
 // Escucha cambios en tiempo real (por ejemplo, si cargás algo desde otro dispositivo).
 function startRealtimeSync(){
   if (unsubscribeEntries) unsubscribeEntries();
@@ -970,13 +1027,21 @@ function startRealtimeSync(){
       customExercises = JSON.parse(data.customExercisesJson);
       changedExercises = true;
     }
+    if (typeof data.routineLabelsJson === 'string'){
+      routineLabels = JSON.parse(data.routineLabelsJson);
+      changedExercises = true;
+    }
+    if (typeof data.useBaseRoutine === 'boolean' && data.useBaseRoutine !== useBaseRoutine){
+      useBaseRoutine = data.useBaseRoutine;
+      changedExercises = true;
+    }
     // No pisamos la pantalla si hay una ficha de día abierta, para no perder lo que se está tipeando.
     if (!draft){
       renderCalendar();
       renderHeader();
       if (currentView === 'progreso') renderProgreso();
       if (changedExercises && currentView === 'rutina') renderRutina();
-      if (changedExercises && currentView === 'editar') renderEditarList();
+      if (changedExercises && currentView === 'editar'){ renderEditarList(); updateDayTypeOptions(); }
     }
   }, function(e){
     console.error('Error de sincronización', e);
@@ -1169,17 +1234,21 @@ function renderRutina(){
   const container = document.getElementById('routineCards');
   container.innerHTML = '';
   ['A','B'].forEach(id=>{
-    const r = ROUTINES[id];
+    const meta = getRoutineMeta(id);
     const card = document.createElement('div');
-    card.className = 'routine-card ' + r.color;
+    card.className = 'routine-card ' + meta.color;
+    const sections = getSectionsForDay(id);
     let sectionsHtml = '';
-    getSectionsForDay(id).forEach(sec=>{
+    sections.forEach(sec=>{
       sectionsHtml += '<div class="ex-section"><div class="ex-section-name">'+sec.name+'</div><ul>' +
         sec.exercises.map(renderExerciseRow).join('') + '</ul></div>';
     });
+    if (!sections.length){
+      sectionsHtml = '<p style="font-size:12.5px;color:var(--ink-soft);margin-top:12px;">Todavía no agregaste ejercicios para este día. Andá a la pestaña Editar para sumarlos.</p>';
+    }
     card.innerHTML =
-      '<div class="rc-tag">'+r.days+'</div>' +
-      '<h3>'+r.label+'</h3>' +
+      '<div class="rc-tag">'+meta.days+'</div>' +
+      '<h3>'+escapeHtml(meta.label)+'</h3>' +
       sectionsHtml;
     container.appendChild(card);
   });
@@ -1301,7 +1370,7 @@ function renderProgreso(){
     const d = parseKey(key);
     const type = e.dayType;
     const dotColor = type === 'A' ? 'var(--blue)' : type === 'B' ? 'var(--red)' : 'var(--rest)';
-    const label = type === 'A' ? ROUTINES.A.label : type === 'B' ? ROUTINES.B.label : 'Descanso';
+    const label = (type === 'A' || type === 'B') ? getRoutineMeta(type).label : 'Descanso';
     const icon = e.status === 'completo' ? '✅' : e.status === 'parcial' ? '⚠️' : '❌';
     const sub = e.comment || e.extra || '';
     return '<div class="history-row">' +
@@ -1317,6 +1386,17 @@ function renderProgreso(){
 /* ======================================================
    EDITAR — ejercicios fijos personalizados
    ====================================================== */
+function updateDayTypeOptions(){
+  const sel = document.getElementById('ceDayType');
+  if (!sel) return;
+  const metaA = getRoutineMeta('A');
+  const metaB = getRoutineMeta('B');
+  const optA = sel.querySelector('option[value="A"]');
+  const optB = sel.querySelector('option[value="B"]');
+  if (optA) optA.textContent = metaA.days + ' — ' + metaA.label;
+  if (optB) optB.textContent = metaB.days + ' — ' + metaB.label;
+}
+
 function updateSectionOptions(){
   const dayType = document.getElementById('ceDayType').value;
   const wrap = document.getElementById('ceSectionWrap');
@@ -1328,7 +1408,7 @@ function updateSectionOptions(){
     return;
   }
   wrap.style.display = 'block';
-  const baseSections = ROUTINES[dayType].sections.map(s=>s.name);
+  const baseSections = useBaseRoutine ? ROUTINES[dayType].sections.map(s=>s.name) : [];
   const customSections = customExercises.filter(ce=> ce.dayType === dayType).map(ce=> ce.section);
   const allSections = Array.from(new Set(baseSections.concat(customSections)));
   sel.innerHTML = allSections.map(s=>'<option value="'+escapeHtml(s)+'">'+escapeHtml(s)+'</option>').join('') +
@@ -1373,6 +1453,17 @@ function renderEditarList(){
 }
 
 function bindEditarForm(){
+  document.getElementById('saveLabelsBtn').addEventListener('click', async ()=>{
+    const a = document.getElementById('labelA').value.trim();
+    const b = document.getElementById('labelB').value.trim();
+    routineLabels.A = Object.assign({}, routineLabels.A, { label: a || ROUTINES.A.label });
+    routineLabels.B = Object.assign({}, routineLabels.B, { label: b || ROUTINES.B.label });
+    await saveRoutineMeta();
+    updateDayTypeOptions();
+    renderRutina();
+    showToast('Nombres guardados ✓');
+  });
+
   document.getElementById('ceDayType').addEventListener('change', updateSectionOptions);
   document.getElementById('ceSection').addEventListener('change', ()=>{
     const isNew = document.getElementById('ceSection').value === '__new__';
@@ -1414,7 +1505,13 @@ function bindEditarForm(){
     showToast('Ejercicio agregado ✓');
   });
 
+  updateDayTypeOptions();
   updateSectionOptions();
+}
+
+function fillLabelInputs(){
+  document.getElementById('labelA').value = getRoutineMeta('A').label;
+  document.getElementById('labelB').value = getRoutineMeta('B').label;
 }
 
 function escapeHtml(s){
@@ -1440,11 +1537,22 @@ function blankEntry(dateKey){
 
 function exerciseKey(section, name){ return section + '|' + name; }
 
+function getRoutineMeta(dayType){
+  const custom = routineLabels[dayType];
+  return {
+    label: (custom && custom.label) ? custom.label : ROUTINES[dayType].label,
+    days: ROUTINES[dayType].days,
+    color: ROUTINES[dayType].color
+  };
+}
+
 function getSectionsForDay(dayType){
-  const sections = ROUTINES[dayType].sections.map(sec=>({
-    name: sec.name,
-    exercises: sec.exercises.map(ex=>({ n:ex.n, d:ex.d, link:ex.link, video:ex.video, key: exerciseKey(sec.name, ex.n) }))
-  }));
+  const sections = useBaseRoutine
+    ? ROUTINES[dayType].sections.map(sec=>({
+        name: sec.name,
+        exercises: sec.exercises.map(ex=>({ n:ex.n, d:ex.d, link:ex.link, video:ex.video, key: exerciseKey(sec.name, ex.n) }))
+      }))
+    : [];
   customExercises.filter(ce=> ce.dayType === dayType).forEach(ce=>{
     let sec = sections.find(s=> s.name === ce.section);
     if (!sec){ sec = { name: ce.section, exercises:[] }; sections.push(sec); }
@@ -1454,10 +1562,10 @@ function getSectionsForDay(dayType){
 }
 
 function getMobilityItems(){
-  const items = [
+  const items = useBaseRoutine ? [
     { n:'Movilidad de piernas', d:'', link: WARMUP.mobility.url, key: exerciseKey('Movilidad','Movilidad de piernas') },
     { n:'Movilidad de brazos', d:'', link: ARM_MOBILITY_URL, key: exerciseKey('Movilidad','Movilidad de brazos') },
-  ];
+  ] : [];
   customExercises.filter(ce=> ce.dayType === 'mobility').forEach(ce=>{
     items.push({ n: ce.name, d: ce.detail||'', link: ce.link||'', key: exerciseKey('Movilidad','custom:'+ce.id) });
   });
@@ -1490,8 +1598,8 @@ function renderSheetBody(){
   const suggested = dayTypeForDate(openDateKey);
 
   const segRows = [
-    { id:'A', label: ROUTINES.A.label, dot:'var(--blue)' },
-    { id:'B', label: ROUTINES.B.label, dot:'var(--red)' },
+    { id:'A', label: getRoutineMeta('A').label, dot:'var(--blue)' },
+    { id:'B', label: getRoutineMeta('B').label, dot:'var(--red)' },
     { id:'rest', label:'Descanso', dot:'var(--rest)' },
   ].map(o=>{
     const active = draft.dayType === o.id;
@@ -1690,7 +1798,7 @@ function setView(view){
     b.classList.toggle('active', b.getAttribute('data-view') === view);
   });
   if (view === 'progreso') renderProgreso();
-  if (view === 'editar') renderEditarList();
+  if (view === 'editar'){ renderEditarList(); fillLabelInputs(); updateDayTypeOptions(); }
 }
 
 /* ======================================================
@@ -1785,15 +1893,22 @@ async function handleAuthChange(user){
     document.getElementById('loadingLabel').textContent = 'Cargando tu rutina…';
     document.getElementById('loading').style.display = 'flex';
 
-    await loadEntries();
-    startRealtimeSync();
+    const result = await loadUserData();
 
     document.getElementById('loading').style.display = 'none';
+
+    if (result.isNew){
+      showOnboarding();
+      return;
+    }
+
+    startRealtimeSync();
     document.getElementById('app').style.display = 'flex';
 
     renderHeader();
     renderCalendar();
     renderRutina();
+    updateDayTypeOptions();
     updateSectionOptions();
     setView('calendar');
   } else {
@@ -1801,10 +1916,54 @@ async function handleAuthChange(user){
     currentUser = null;
     entries = {};
     customExercises = [];
+    routineLabels = {};
+    useBaseRoutine = true;
     document.getElementById('loading').style.display = 'none';
+    document.getElementById('onboardingScreen').style.display = 'none';
     document.getElementById('app').style.display = 'none';
     document.getElementById('authScreen').style.display = 'flex';
     document.getElementById('authPassword').value = '';
+  }
+}
+
+/* ======================================================
+   ONBOARDING (elección de rutina para cuentas nuevas)
+   ====================================================== */
+function showOnboarding(){
+  document.getElementById('onboardingScreen').style.display = 'flex';
+}
+
+async function chooseOnboarding(useBase){
+  const loadingEl = document.getElementById('onboardLoading');
+  document.getElementById('onboardUseBase').disabled = true;
+  document.getElementById('onboardBlank').disabled = true;
+  loadingEl.style.display = 'flex';
+
+  useBaseRoutine = useBase;
+  entries = {};
+  customExercises = [];
+  routineLabels = {};
+  await saveOnboardingChoice();
+
+  document.getElementById('onboardingScreen').style.display = 'none';
+  document.getElementById('onboardUseBase').disabled = false;
+  document.getElementById('onboardBlank').disabled = false;
+  loadingEl.style.display = 'none';
+
+  startRealtimeSync();
+  document.getElementById('app').style.display = 'flex';
+
+  renderHeader();
+  renderCalendar();
+  renderRutina();
+  updateDayTypeOptions();
+  updateSectionOptions();
+
+  if (useBase){
+    setView('calendar');
+  } else {
+    setView('editar');
+    showToast('Empezá agregando tus ejercicios acá 👇');
   }
 }
 
@@ -1832,6 +1991,9 @@ function init(){
   bindAuthForm();
   bindEditarForm();
   bindInfoView();
+
+  document.getElementById('onboardUseBase').addEventListener('click', ()=> chooseOnboarding(true));
+  document.getElementById('onboardBlank').addEventListener('click', ()=> chooseOnboarding(false));
 
   document.querySelectorAll('.tab-btn').forEach(btn=>{
     btn.addEventListener('click', ()=> setView(btn.getAttribute('data-view')));
