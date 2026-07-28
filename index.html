@@ -572,7 +572,7 @@
   <header class="app-header">
     <div>
       <div class="brand-title">Mi rutina</div>
-      <div class="brand-sub" id="startDateLabel">Desde el 1 de junio</div>
+      <div class="brand-sub" id="startDateLabel"></div>
     </div>
     <div class="header-right">
       <div class="streak-chip" id="streakChip">🔥 <span id="streakNum">0</span></div>
@@ -600,8 +600,8 @@
     <div class="weekday-row"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
     <div class="cal-grid" id="calGrid"></div>
     <div class="legend">
-      <div class="legend-item"><span class="legend-dot" style="background:var(--blue);"></span>Piernas y pecho</div>
-      <div class="legend-item"><span class="legend-dot" style="background:var(--red);"></span>Piernas y espalda</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--blue);"></span><span id="legendLabelA">Piernas y pecho</span></div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--red);"></span><span id="legendLabelB">Piernas y espalda</span></div>
       <div class="legend-item"><span class="legend-dot" style="background:var(--rest);"></span>Descanso</div>
       <div class="legend-item"><span class="legend-dot" style="background:var(--green);"></span>Completo</div>
       <div class="legend-item"><span class="legend-dot" style="background:var(--gold);"></span>Parcial</div>
@@ -612,19 +612,20 @@
   <section class="view" id="view-rutina">
     <div class="section-eyebrow">Calentamiento · todos los días</div>
     <div class="info-card">
-      <h4 id="warmupCardio"></h4>
-      <p id="warmupCoreNote"></p>
-      <ul id="warmupCoreList" style="margin-bottom:8px;"></ul>
-      <a class="mobility-btn" id="warmupMobilityLink" href="#" target="_blank" rel="noopener">Ver movilidad de piernas ↗</a>
-      <ul id="warmupCustomMobility" style="display:none;margin-top:10px;"></ul>
+      <h4>Calentamiento</h4>
+      <p class="note-italic" style="margin-bottom:8px;">Zona media: 15 segundos cada ejercicio, 2 vueltas completas, con descanso entre vueltas.</p>
+      <ul id="warmupItemsList" style="margin-bottom:0;"></ul>
     </div>
-    <p class="note-italic" id="defaultRepNote"></p>
-    <div id="routineCards"></div>
+
+    <div class="section-eyebrow" style="margin-top:20px;">Movilidad · todos los días</div>
     <div class="info-card">
-      <h4>Movilidad de brazos</h4>
-      <p id="armMobilityText" style="white-space:pre-line;"></p>
+      <ul id="mobilityItemsList" style="margin-bottom:10px;"></ul>
+      <p id="armMobilityText" style="white-space:pre-line;font-size:12px;color:var(--ink-soft);line-height:1.55;"></p>
       <a class="mobility-btn" id="armMobilityLink" href="#" target="_blank" rel="noopener">Ver movilidad de brazos ↗</a>
     </div>
+
+    <p class="note-italic" id="defaultRepNote" style="margin-top:20px;"></p>
+    <div id="routineCards"></div>
   </section>
 
   <!-- ===== PROGRESO ===== -->
@@ -661,9 +662,10 @@
     <div class="info-card" style="border-style:solid;">
       <div class="field-label" style="margin-top:0;">Día</div>
       <select id="ceDayType" class="form-input">
+        <option value="warmup">Calentamiento (todos los días)</option>
+        <option value="mobility">Movilidad (todos los días)</option>
         <option value="A"></option>
         <option value="B"></option>
-        <option value="mobility">Movilidad (todos los días)</option>
       </select>
 
       <div id="ceSectionWrap">
@@ -754,8 +756,6 @@
 /* ======================================================
    DATOS DE LA RUTINA
    ====================================================== */
-const START_DATE = '2026-06-01';
-
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const DIAS_LARGOS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
 const DIAS_CORTOS3 = ['dom','lun','mar','mié','jue','vie','sáb'];
@@ -908,6 +908,15 @@ function toKey(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getD
 function parseKey(k){ const [y,m,d] = k.split('-').map(Number); return new Date(y, m-1, d); }
 function todayKey(){ return toKey(new Date()); }
 
+// Fecha desde la que "empezó" este usuario: el día más antiguo que tiene
+// registrado. Si todavía no registró nada, no hay una fecha de inicio real
+// todavía (devuelve null) y no se limita ni se cuenta nada de más.
+function getEffectiveStartDate(){
+  const keys = Object.keys(entries);
+  if (!keys.length) return null;
+  return keys.sort()[0];
+}
+
 function dayTypeForDate(key){
   const wd = parseKey(key).getDay(); // 0 dom ... 6 sáb
   if (wd === 1 || wd === 4) return 'A';
@@ -1056,9 +1065,11 @@ function stopRealtimeSync(){
    RACHA Y ESTADÍSTICAS
    ====================================================== */
 function computeStreak(){
+  const startKey = getEffectiveStartDate();
+  if (!startKey) return 0;
   let streak = 0;
   let d = parseKey(todayKey());
-  const startD = parseKey(START_DATE);
+  const startD = parseKey(startKey);
   const tKey = todayKey();
   while (d >= startD){
     const key = toKey(d);
@@ -1090,19 +1101,24 @@ function computeStats(){
   });
   const avg = countMin ? Math.round(totalMin/countMin) : 0;
 
-  // Días de descanso: recorremos todo el calendario desde el inicio hasta hoy.
-  // Un día cuenta como descanso si, por defecto o por lo que cargaste, es de tipo
-  // "rest" y no marcaste que hiciste algo (completo/parcial) — sin necesitar que
-  // hayas abierto y guardado ese día a propósito.
+  // Días de descanso: recorremos el calendario desde el primer día que
+  // realmente registraste hasta hoy — nunca desde antes de que existiera
+  // tu cuenta o tu rutina. Un día cuenta como descanso si, por defecto o
+  // por lo que cargaste, es de tipo "rest" y no marcaste que hiciste algo
+  // (completo/parcial) — sin necesitar que hayas abierto y guardado ese
+  // día a propósito.
   let descansos = 0;
-  let d = parseKey(START_DATE);
-  const end = parseKey(todayKey());
-  while (d <= end){
-    const key = toKey(d);
-    const e = entries[key];
-    const type = e ? e.dayType : dayTypeForDate(key);
-    if (type === 'rest' && (!e || e.status === 'no_realizado')) descansos++;
-    d.setDate(d.getDate()+1);
+  const startKey = getEffectiveStartDate();
+  if (startKey){
+    let d = parseKey(startKey);
+    const end = parseKey(todayKey());
+    while (d <= end){
+      const key = toKey(d);
+      const e = entries[key];
+      const type = e ? e.dayType : dayTypeForDate(key);
+      if (type === 'rest' && (!e || e.status === 'no_realizado')) descansos++;
+      d.setDate(d.getDate()+1);
+    }
   }
 
   return { completos, parciales, entrenando: completos+parciales, fallidos, descansos, avg };
@@ -1113,7 +1129,8 @@ function computeStats(){
    ====================================================== */
 function renderHeader(){
   document.getElementById('streakNum').textContent = computeStreak();
-  const sd = parseKey(START_DATE);
+  const startKey = getEffectiveStartDate();
+  const sd = startKey ? parseKey(startKey) : new Date();
   document.getElementById('startDateLabel').textContent = 'Desde el ' + sd.getDate() + ' de ' + MESES[sd.getMonth()];
 }
 
@@ -1144,8 +1161,11 @@ function renderCalendar(){
   const grid = document.getElementById('calGrid');
   grid.innerHTML = '';
   const cells = buildMonthGrid(y, m);
-  const startKey = START_DATE;
+  const startKey = getEffectiveStartDate(); // null si todavía no registró ningún día
   const tKey = todayKey();
+
+  document.getElementById('legendLabelA').textContent = getRoutineMeta('A').label;
+  document.getElementById('legendLabelB').textContent = getRoutineMeta('B').label;
 
   cells.forEach(c=>{
     const key = toKey(c.date);
@@ -1153,7 +1173,7 @@ function renderCalendar(){
     cell.type = 'button';
     cell.className = 'cal-cell';
     if (!c.inMonth){ cell.classList.add('out'); }
-    if (key < startKey){ cell.classList.add('before-start'); }
+    if (startKey && key < startKey){ cell.classList.add('before-start'); }
     if (key === tKey){ cell.classList.add('is-today'); }
 
     const type = dayTypeForDate(key);
@@ -1169,7 +1189,7 @@ function renderCalendar(){
     num.textContent = c.date.getDate();
     cell.appendChild(num);
 
-    if (c.inMonth && key >= startKey){
+    if (c.inMonth && (!startKey || key >= startKey)){
       const dot = document.createElement('div');
       dot.className = 'dot ' + (type === 'A' ? 'blue' : type === 'B' ? 'red' : 'rest');
       cell.appendChild(dot);
@@ -1207,29 +1227,27 @@ function renderExerciseRow(ex){
 }
 
 function renderRutina(){
-  document.getElementById('warmupCardio').textContent = WARMUP.cardio.n + ' — ' + WARMUP.cardio.d;
-  document.getElementById('warmupCoreNote').textContent = WARMUP.coreNote;
-  const coreList = document.getElementById('warmupCoreList');
-  coreList.innerHTML = WARMUP.core.map(x=>'<li style="font-size:13px;color:var(--ink-soft);padding:2px 0;">• '+x+'</li>').join('');
-  const wl = document.getElementById('warmupMobilityLink');
-  wl.href = WARMUP.mobility.url;
-  wl.textContent = 'Ver ' + WARMUP.mobility.label.toLowerCase() + ' ↗';
+  const warmupItems = getWarmupItems();
+  const wList = document.getElementById('warmupItemsList');
+  wList.innerHTML = warmupItems.length
+    ? warmupItems.map(it=>{
+        const link = it.link ? ' ' + refLink(it.link, 'Ver') : '';
+        const detail = it.d ? ' — '+escapeHtml(it.d) : '';
+        return '<li style="font-size:13px;color:var(--ink-soft);padding:2px 0;">• '+escapeHtml(it.n)+detail+link+'</li>';
+      }).join('')
+    : '<li style="font-size:12.5px;color:var(--ink-faint);list-style:none;">Todavía no agregaste ejercicios de calentamiento. Sumalos desde la pestaña Editar.</li>';
 
-  const customMobility = customExercises.filter(ce=> ce.dayType === 'mobility');
-  const cmEl = document.getElementById('warmupCustomMobility');
-  if (customMobility.length){
-    cmEl.style.display = 'block';
-    cmEl.innerHTML = customMobility.map(ce=>{
-      const link = ce.link ? ' ' + refLink(ce.link, 'Ver') : '';
-      const detail = ce.detail ? ' — '+ce.detail : '';
-      return '<li style="font-size:13px;color:var(--ink-soft);padding:2px 0;">• '+escapeHtml(ce.name)+detail+link+'</li>';
-    }).join('');
-  } else {
-    cmEl.style.display = 'none';
-    cmEl.innerHTML = '';
-  }
+  const mobilityItems = getMobilityItems();
+  const mList = document.getElementById('mobilityItemsList');
+  mList.innerHTML = mobilityItems.length
+    ? mobilityItems.map(it=>{
+        const link = it.link ? ' ' + refLink(it.link, 'Ver') : '';
+        const detail = it.d ? ' — '+escapeHtml(it.d) : '';
+        return '<li style="font-size:13px;color:var(--ink-soft);padding:2px 0;">• '+escapeHtml(it.n)+detail+link+'</li>';
+      }).join('')
+    : '<li style="font-size:12.5px;color:var(--ink-faint);list-style:none;">Todavía no agregaste ejercicios de movilidad.</li>';
 
-  document.getElementById('defaultRepNote').textContent = 'Salvo que se indique lo contrario, todos los ejercicios son 12 repeticiones por 4 series.';
+  document.getElementById('defaultRepNote').textContent = 'Salvo Calentamiento y Movilidad, y que se indique lo contrario, todos los ejercicios son 12 repeticiones por 4 series.';
 
   const container = document.getElementById('routineCards');
   container.innerHTML = '';
@@ -1403,7 +1421,7 @@ function updateSectionOptions(){
   const sel = document.getElementById('ceSection');
   const newInput = document.getElementById('ceNewSection');
 
-  if (dayType === 'mobility'){
+  if (dayType === 'mobility' || dayType === 'warmup'){
     wrap.style.display = 'none';
     return;
   }
@@ -1413,8 +1431,20 @@ function updateSectionOptions(){
   const allSections = Array.from(new Set(baseSections.concat(customSections)));
   sel.innerHTML = allSections.map(s=>'<option value="'+escapeHtml(s)+'">'+escapeHtml(s)+'</option>').join('') +
     '<option value="__new__">+ Nueva sección…</option>';
-  newInput.style.display = 'none';
-  newInput.value = '';
+
+  if (allSections.length === 0){
+    // Todavía no hay ninguna sección para este día (ej: rutina empezada de
+    // cero) — el select solo tendría "+ Nueva sección…" y, al venir ya
+    // seleccionada por defecto, el evento "change" nunca se dispararía.
+    // Pedimos el nombre directamente en vez de esconder el campo.
+    sel.style.display = 'none';
+    newInput.style.display = 'block';
+  } else {
+    sel.style.display = 'block';
+    const isNewSelected = sel.value === '__new__';
+    newInput.style.display = isNewSelected ? 'block' : 'none';
+    if (!isNewSelected) newInput.value = '';
+  }
 }
 
 function renderEditarList(){
@@ -1424,8 +1454,8 @@ function renderEditarList(){
     return;
   }
   el.innerHTML = customExercises.map(ce=>{
-    const dayLabel = ce.dayType === 'A' ? 'Lunes y jueves' : ce.dayType === 'B' ? 'Martes y viernes' : 'Movilidad';
-    const sectionLabel = ce.dayType === 'mobility' ? '' : ' · '+escapeHtml(ce.section);
+    const dayLabel = ce.dayType === 'A' ? 'Lunes y jueves' : ce.dayType === 'B' ? 'Martes y viernes' : ce.dayType === 'warmup' ? 'Calentamiento' : 'Movilidad';
+    const sectionLabel = (ce.dayType === 'mobility' || ce.dayType === 'warmup') ? '' : ' · '+escapeHtml(ce.section);
     const detailLabel = ce.detail ? ' · '+escapeHtml(ce.detail) : '';
     const linkHtml = ce.link ? '<div style="margin-top:3px;"><a class="cr-link" href="'+ce.link+'" target="_blank" rel="noopener">Ver referencia ↗</a></div>' : '';
     return '<div class="history-row">' +
@@ -1480,7 +1510,7 @@ function bindEditarForm(){
     if (!name){ showToast('Escribí el nombre del ejercicio'); return; }
 
     let section = '';
-    if (dayType !== 'mobility'){
+    if (dayType !== 'mobility' && dayType !== 'warmup'){
       const selVal = document.getElementById('ceSection').value;
       if (selVal === '__new__'){
         section = document.getElementById('ceNewSection').value.trim();
@@ -1559,6 +1589,16 @@ function getSectionsForDay(dayType){
     sec.exercises.push({ n: ce.name, d: ce.detail||'', link: ce.link||'', video:'', key: exerciseKey(sec.name, 'custom:'+ce.id) });
   });
   return sections;
+}
+
+function getWarmupItems(){
+  const items = useBaseRoutine ? [
+    { n: WARMUP.cardio.n, d: WARMUP.cardio.d, link:'', key: exerciseKey('Calentamiento', WARMUP.cardio.n) },
+  ].concat(WARMUP.core.map(c=> ({ n:c, d:'', link:'', key: exerciseKey('Calentamiento', c) }))) : [];
+  customExercises.filter(ce=> ce.dayType === 'warmup').forEach(ce=>{
+    items.push({ n: ce.name, d: ce.detail||'', link: ce.link||'', key: exerciseKey('Calentamiento','custom:'+ce.id) });
+  });
+  return items;
 }
 
 function getMobilityItems(){
@@ -1673,12 +1713,20 @@ function renderExerciseZone(){
     return;
   }
   const sections = getSectionsForDay(draft.dayType);
-  let html = '<div class="field-label">Calentamiento</div>' +
-    '<button type="button" class="exwrap-toggle" id="warmupToggle">' +
-      '<span>Cinta 8\' + zona media (5 ejercicios)</span>' +
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>' +
-    '</button>' +
-    '<div class="exwrap-list" id="warmupList">' + WARMUP.core.map(x=>'• '+x).join('<br>') + '</div>';
+  const warmupItems = getWarmupItems();
+  let html = '';
+
+  if (warmupItems.length){
+    html += '<div class="check-section"><div class="check-section-name">Calentamiento</div>' +
+      warmupItems.map(it=>{
+        const links = it.link ? '<a class="cr-link" href="'+it.link+'" target="_blank" rel="noopener">Ver ejercicio ↗</a>' : '';
+        return renderCheckRow(it.key, it.n, it.d, links);
+      }).join('') +
+      '</div>';
+  } else {
+    html += '<div class="field-label" style="margin-top:0;">Calentamiento</div>' +
+      '<p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:4px;">Todavía no agregaste ejercicios de calentamiento. Sumalos desde la pestaña Editar.</p>';
+  }
 
   html += '<div class="check-section"><div class="check-section-name">Movilidad</div>' +
     getMobilityItems().map(it=>{
@@ -1699,11 +1747,6 @@ function renderExerciseZone(){
   });
 
   zone.innerHTML = html;
-
-  document.getElementById('warmupToggle').addEventListener('click', function(){
-    this.classList.toggle('open');
-    document.getElementById('warmupList').classList.toggle('open');
-  });
 
   zone.querySelectorAll('.status-toggle').forEach(btn=>{
     btn.addEventListener('click', ()=>{
