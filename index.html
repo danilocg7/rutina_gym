@@ -613,15 +613,14 @@
     <div class="section-eyebrow">Calentamiento · todos los días</div>
     <div class="info-card">
       <h4>Calentamiento</h4>
-      <p class="note-italic" style="margin-bottom:8px;">Zona media: 15 segundos cada ejercicio, 2 vueltas completas, con descanso entre vueltas.</p>
+      <p class="note-italic" id="warmupNoteText" style="margin-bottom:8px;display:none;"></p>
       <ul id="warmupItemsList" style="margin-bottom:0;"></ul>
     </div>
 
     <div class="section-eyebrow" style="margin-top:20px;">Movilidad · todos los días</div>
     <div class="info-card">
-      <ul id="mobilityItemsList" style="margin-bottom:10px;"></ul>
-      <p id="armMobilityText" style="white-space:pre-line;font-size:12px;color:var(--ink-soft);line-height:1.55;"></p>
-      <a class="mobility-btn" id="armMobilityLink" href="#" target="_blank" rel="noopener">Ver movilidad de brazos ↗</a>
+      <ul id="mobilityItemsList" style="margin-bottom:0;"></ul>
+      <p id="mobilityNoteText" style="white-space:pre-line;font-size:12px;color:var(--ink-soft);line-height:1.55;margin-top:10px;display:none;"></p>
     </div>
 
     <p class="note-italic" id="defaultRepNote" style="margin-top:20px;"></p>
@@ -648,13 +647,17 @@
 
   <!-- ===== EDITAR (ejercicios fijos) ===== -->
   <section class="view" id="view-editar">
-    <div class="section-eyebrow">Nombres de tu rutina</div>
+    <div class="section-eyebrow">Personalizar tu rutina</div>
     <div class="info-card" style="border-style:solid;">
       <div class="field-label" style="margin-top:0;">Nombre del día A (lunes y jueves)</div>
       <input type="text" id="labelA" class="form-input" placeholder="Ej: Piernas y pecho + Bíceps">
       <div class="field-label">Nombre del día B (martes y viernes)</div>
       <input type="text" id="labelB" class="form-input" placeholder="Ej: Piernas y espalda + Tríceps">
-      <button class="btn-primary" id="saveLabelsBtn" style="margin-top:4px;">Guardar nombres</button>
+      <div class="field-label">Notas de calentamiento (opcional)</div>
+      <textarea id="warmupNotesInput" placeholder="Ej: 15 segundos cada ejercicio, 2 vueltas, con descanso entre vueltas."></textarea>
+      <div class="field-label">Notas de movilidad (opcional)</div>
+      <textarea id="mobilityNotesInput" placeholder="Ej: cómo hacer la movilidad de brazos, con qué elemento, etc."></textarea>
+      <button class="btn-primary" id="saveLabelsBtn" style="margin-top:12px;">Guardar cambios</button>
     </div>
 
     <div class="section-eyebrow" style="margin-top:22px;">Agregar ejercicio fijo</div>
@@ -767,7 +770,6 @@ const WARMUP = {
   mobility:{ label:'Movilidad de piernas', url:'https://shorturl.at/JuQYa' }
 };
 
-const ARM_MOBILITY_TEXT = 'Con un palo: lo agarro cerca y lo llevo desde adelante hacia atrás (lo más lejos posible hacia la espalda), con los brazos rectos todo el tiempo. Después lo agarro de los extremos y repito el mismo movimiento, llevándolo lo más cerca posible de la cola.\n\nPegado a la pared: estiro los brazos y los junto por detrás.';
 const ARM_MOBILITY_URL = 'https://shorturl.at/du78U';
 
 // Datos nutricionales (pestaña "Info")
@@ -891,6 +893,7 @@ if (FIREBASE_CONFIGURED){
 let entries = {};
 let customExercises = [];
 let routineLabels = {}; // { A:{label}, B:{label} } — nombres personalizados de cada día
+let sectionNotes = { warmup:'', mobility:'' }; // comentarios opcionales del usuario
 let useBaseRoutine = true; // false = el usuario eligió empezar su rutina de cero
 let currentView = 'calendar';
 let calMonthDate = new Date();
@@ -952,6 +955,7 @@ async function loadUserData(){
       entries = {};
       customExercises = [];
       routineLabels = {};
+      sectionNotes = { warmup:'', mobility:'' };
       useBaseRoutine = true;
       return { isNew: true };
     }
@@ -959,6 +963,7 @@ async function loadUserData(){
     entries = JSON.parse(data.entriesJson);
     customExercises = (typeof data.customExercisesJson === 'string') ? JSON.parse(data.customExercisesJson) : [];
     routineLabels = (typeof data.routineLabelsJson === 'string') ? JSON.parse(data.routineLabelsJson) : {};
+    sectionNotes = (typeof data.sectionNotesJson === 'string') ? JSON.parse(data.sectionNotesJson) : { warmup:'', mobility:'' };
     useBaseRoutine = (typeof data.useBaseRoutine === 'boolean') ? data.useBaseRoutine : true;
     return { isNew: false };
   }catch(e){
@@ -966,6 +971,7 @@ async function loadUserData(){
     entries = {};
     customExercises = [];
     routineLabels = {};
+    sectionNotes = { warmup:'', mobility:'' };
     useBaseRoutine = true;
     return { isNew: false };
   }
@@ -999,6 +1005,7 @@ async function saveRoutineMeta(){
   try{
     await userDocRef().set({
       routineLabelsJson: JSON.stringify(routineLabels),
+      sectionNotesJson: JSON.stringify(sectionNotes),
       useBaseRoutine: useBaseRoutine,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge:true });
@@ -1015,6 +1022,7 @@ async function saveOnboardingChoice(){
       entriesJson: JSON.stringify(entries),
       customExercisesJson: JSON.stringify(customExercises),
       routineLabelsJson: JSON.stringify(routineLabels),
+      sectionNotesJson: JSON.stringify(sectionNotes),
       useBaseRoutine: useBaseRoutine,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge:true });
@@ -1040,6 +1048,10 @@ function startRealtimeSync(){
       routineLabels = JSON.parse(data.routineLabelsJson);
       changedExercises = true;
     }
+    if (typeof data.sectionNotesJson === 'string'){
+      sectionNotes = JSON.parse(data.sectionNotesJson);
+      changedExercises = true;
+    }
     if (typeof data.useBaseRoutine === 'boolean' && data.useBaseRoutine !== useBaseRoutine){
       useBaseRoutine = data.useBaseRoutine;
       changedExercises = true;
@@ -1050,7 +1062,7 @@ function startRealtimeSync(){
       renderHeader();
       if (currentView === 'progreso') renderProgreso();
       if (changedExercises && currentView === 'rutina') renderRutina();
-      if (changedExercises && currentView === 'editar'){ renderEditarList(); updateDayTypeOptions(); }
+      if (changedExercises && currentView === 'editar'){ renderEditarList(); updateDayTypeOptions(); fillLabelInputs(); }
     }
   }, function(e){
     console.error('Error de sincronización', e);
@@ -1073,16 +1085,17 @@ function computeStreak(){
   const tKey = todayKey();
   while (d >= startD){
     const key = toKey(d);
-    const type = dayTypeForDate(key);
-    if (type !== 'rest'){
-      const e = entries[key];
-      const ok = e && (e.status === 'completo' || e.status === 'parcial');
-      if (!ok){
+    const e = entries[key];
+    const ok = e && (e.status === 'completo' || e.status === 'parcial');
+    if (ok){
+      streak++;
+    } else {
+      const type = e ? e.dayType : dayTypeForDate(key);
+      if (type !== 'rest'){
         if (key === tKey){ /* hoy todavía puede registrarse, no corta la racha */ }
         else break;
-      } else {
-        streak++;
       }
+      // si es un día de descanso sin nada marcado, no corta la racha ni suma: seguimos hacia atrás
     }
     d.setDate(d.getDate()-1);
   }
@@ -1097,7 +1110,7 @@ function computeStats(){
     if (e.status === 'completo') completos++;
     else if (e.status === 'parcial') parciales++;
     else if (e.status === 'no_realizado' && e.dayType !== 'rest') fallidos++;
-    if (typeof e.minutes === 'number'){ totalMin += e.minutes; countMin++; }
+    if (typeof e.minutes === 'number' && e.minutes > 0){ totalMin += e.minutes; countMin++; }
   });
   const avg = countMin ? Math.round(totalMin/countMin) : 0;
 
@@ -1227,6 +1240,14 @@ function renderExerciseRow(ex){
 }
 
 function renderRutina(){
+  const warmupNoteEl = document.getElementById('warmupNoteText');
+  if (sectionNotes.warmup){
+    warmupNoteEl.textContent = sectionNotes.warmup;
+    warmupNoteEl.style.display = 'block';
+  } else {
+    warmupNoteEl.style.display = 'none';
+  }
+
   const warmupItems = getWarmupItems();
   const wList = document.getElementById('warmupItemsList');
   wList.innerHTML = warmupItems.length
@@ -1246,6 +1267,14 @@ function renderRutina(){
         return '<li style="font-size:13px;color:var(--ink-soft);padding:2px 0;">• '+escapeHtml(it.n)+detail+link+'</li>';
       }).join('')
     : '<li style="font-size:12.5px;color:var(--ink-faint);list-style:none;">Todavía no agregaste ejercicios de movilidad.</li>';
+
+  const mobilityNoteEl = document.getElementById('mobilityNoteText');
+  if (sectionNotes.mobility){
+    mobilityNoteEl.textContent = sectionNotes.mobility;
+    mobilityNoteEl.style.display = 'block';
+  } else {
+    mobilityNoteEl.style.display = 'none';
+  }
 
   document.getElementById('defaultRepNote').textContent = 'Salvo Calentamiento y Movilidad, y que se indique lo contrario, todos los ejercicios son 12 repeticiones por 4 series.';
 
@@ -1270,10 +1299,6 @@ function renderRutina(){
       sectionsHtml;
     container.appendChild(card);
   });
-
-  document.getElementById('armMobilityText').textContent = ARM_MOBILITY_TEXT;
-  const al = document.getElementById('armMobilityLink');
-  al.href = ARM_MOBILITY_URL;
 }
 
 /* ======================================================
@@ -1336,7 +1361,7 @@ function computeWeekdayAverages(){
   const buckets = {0:[],1:[],2:[],3:[],4:[],5:[],6:[]};
   Object.keys(entries).forEach(key=>{
     const e = entries[key];
-    if (typeof e.minutes === 'number'){
+    if (typeof e.minutes === 'number' && e.minutes > 0){
       buckets[parseKey(key).getDay()].push(e.minutes);
     }
   });
@@ -1488,10 +1513,12 @@ function bindEditarForm(){
     const b = document.getElementById('labelB').value.trim();
     routineLabels.A = Object.assign({}, routineLabels.A, { label: a || ROUTINES.A.label });
     routineLabels.B = Object.assign({}, routineLabels.B, { label: b || ROUTINES.B.label });
+    sectionNotes.warmup = document.getElementById('warmupNotesInput').value.trim();
+    sectionNotes.mobility = document.getElementById('mobilityNotesInput').value.trim();
     await saveRoutineMeta();
     updateDayTypeOptions();
     renderRutina();
-    showToast('Nombres guardados ✓');
+    showToast('Cambios guardados ✓');
   });
 
   document.getElementById('ceDayType').addEventListener('change', updateSectionOptions);
@@ -1542,6 +1569,8 @@ function bindEditarForm(){
 function fillLabelInputs(){
   document.getElementById('labelA').value = getRoutineMeta('A').label;
   document.getElementById('labelB').value = getRoutineMeta('B').label;
+  document.getElementById('warmupNotesInput').value = sectionNotes.warmup || '';
+  document.getElementById('mobilityNotesInput').value = sectionNotes.mobility || '';
 }
 
 function escapeHtml(s){
@@ -1960,6 +1989,7 @@ async function handleAuthChange(user){
     entries = {};
     customExercises = [];
     routineLabels = {};
+    sectionNotes = { warmup:'', mobility:'' };
     useBaseRoutine = true;
     document.getElementById('loading').style.display = 'none';
     document.getElementById('onboardingScreen').style.display = 'none';
@@ -1986,6 +2016,7 @@ async function chooseOnboarding(useBase){
   entries = {};
   customExercises = [];
   routineLabels = {};
+  sectionNotes = { warmup:'', mobility:'' };
   await saveOnboardingChoice();
 
   document.getElementById('onboardingScreen').style.display = 'none';
